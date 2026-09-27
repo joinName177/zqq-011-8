@@ -6,6 +6,15 @@ import {
   ExtremeWeatherAlert,
   SynopticChartData
 } from './models';
+import {
+  normalizeText,
+  toSingleLine,
+  truncateText,
+  MAX_ID_CHARS,
+  MAX_LABEL_CHARS,
+  MAX_NOTE_CHARS,
+  MAX_TAG_CHARS
+} from './text-encoding';
 
 export const TAG_METAS: Record<string, MoodTagMeta> = {
   '晴空万里': {
@@ -90,32 +99,80 @@ export const TAG_METAS: Record<string, MoodTagMeta> = {
   }
 };
 
+const FALLBACK_TAG = '阴转多云';
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/** 标签归一化：归一化 + 折单行 + 截断，未知标签回退到默认标签 */
+export function sanitizeTagName(tag: unknown): string {
+  const normalized = truncateText(toSingleLine(normalizeText(tag)), MAX_TAG_CHARS);
+  return TAG_METAS[normalized] ? normalized : FALLBACK_TAG;
+}
+
+/** 备注归一化：统一编码/换行、去除控制字符、码点安全截断，空值给默认文案 */
+export function sanitizeNoteText(note: unknown): string {
+  return truncateText(normalizeText(note), MAX_NOTE_CHARS) || '平静观测记录';
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fallback;
+}
+
 export function createRecordFromTag(tag: string, intensity: number, note: string, dateStr?: string): MoodRecord {
-  const meta = TAG_METAS[tag] || TAG_METAS['阴转多云'];
-  const pressureOffset = (5 - intensity) * 3;
+  const safeTag = sanitizeTagName(tag);
+  const meta = TAG_METAS[safeTag];
+  const safeIntensity = clampNumber(intensity, 1, 10, 5);
+  const pressureOffset = (5 - safeIntensity) * 3;
   const pressureHpa = Math.max(960, Math.min(1045, meta.defaultPressure + pressureOffset));
-  const tempOffset = (intensity - 5) * 1.2;
+  const tempOffset = (safeIntensity - 5) * 1.2;
   const temperatureC = Math.round(meta.defaultTemp + tempOffset);
-  const humidityPercent = Math.min(100, Math.max(20, meta.defaultHumidity + (intensity > 6 ? 10 : -5)));
+  const humidityPercent = Math.min(100, Math.max(20, meta.defaultHumidity + (safeIntensity > 6 ? 10 : -5)));
 
   const windDirections = ['东北', '东', '东南', '南', '西南', '西', '西北', '北'];
-  const dirIdx = Math.abs((tag.charCodeAt(0) + intensity) % 8);
+  const dirIdx = Math.abs((safeTag.charCodeAt(0) + safeIntensity) % 8);
   const windDirName = windDirections[dirIdx];
   const windDeg = dirIdx * 45;
-  const windSpeed = 5 + intensity * 3.5;
+  const windSpeed = 5 + safeIntensity * 3.5;
 
   return {
     id: `rec-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-    date: dateStr || new Date().toISOString().split('T')[0],
-    tag,
-    intensity,
-    note: note.trim() || '平静观测记录',
+    date: dateStr && DATE_PATTERN.test(dateStr) ? dateStr : new Date().toISOString().split('T')[0],
+    tag: safeTag,
+    intensity: safeIntensity,
+    note: sanitizeNoteText(note),
     pressureHpa,
     temperatureC,
     humidityPercent,
     windSpeedKmH: Math.round(windSpeed),
     windDirectionDeg: windDeg,
     windDirectionName: windDirName
+  };
+}
+
+/**
+ * 清洗外部读取的记录（localStorage 旧版本/脏数据）：
+ * 字符串字段统一归一化与截断，数值字段钳制到合理区间，
+ * 结构非法的记录返回 null 由调用方丢弃，保证界面与导出不会遇到脏文本。
+ */
+export function sanitizeMoodRecord(raw: unknown): MoodRecord | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const date = typeof r.date === 'string' && DATE_PATTERN.test(r.date) ? r.date : null;
+  if (!date) return null;
+
+  const base = createRecordFromTag(sanitizeTagName(r.tag), clampNumber(r.intensity, 1, 10, 5), typeof r.note === 'string' ? r.note : '', date);
+  const id = truncateText(toSingleLine(normalizeText(r.id)), MAX_ID_CHARS);
+  const windDirectionName = truncateText(toSingleLine(normalizeText(r.windDirectionName)), MAX_LABEL_CHARS);
+
+  return {
+    ...base,
+    id: id || base.id,
+    pressureHpa: clampNumber(r.pressureHpa, 900, 1100, base.pressureHpa),
+    temperatureC: clampNumber(r.temperatureC, -60, 60, base.temperatureC),
+    humidityPercent: clampNumber(r.humidityPercent, 0, 100, base.humidityPercent),
+    windSpeedKmH: clampNumber(r.windSpeedKmH, 0, 400, base.windSpeedKmH),
+    windDirectionDeg: clampNumber(r.windDirectionDeg, 0, 360, base.windDirectionDeg),
+    windDirectionName: windDirectionName || base.windDirectionName
   };
 }
 

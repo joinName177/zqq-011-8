@@ -224,6 +224,40 @@ body {
   color: var(--met-muted);
 }
 
+/* Current Observation Note */
+.current-note-box {
+  background: var(--met-card);
+  border: 1px solid var(--met-border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 20px;
+}
+
+.note-box-title {
+  font-size: 11px;
+  color: var(--met-muted);
+  margin-bottom: 6px;
+}
+
+.note-box-text {
+  font-size: 13px;
+  color: var(--met-text);
+  line-height: 1.6;
+  white-space: pre-line;      /* 保留多行换行 */
+  word-break: break-word;     /* 超长词/URL 不断版 */
+  overflow-wrap: anywhere;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.note-counter {
+  font-size: 11px;
+  color: var(--met-muted);
+  text-align: right;
+  margin-top: 4px;
+  font-family: monospace;
+}
+
 /* Weather Map Canvas SVG */
 .synoptic-map-wrap {
   position: relative;
@@ -395,6 +429,8 @@ body {
   font-size: 12px;
   color: var(--met-muted);
   line-height: 1.4;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 /* Monsoon Trend Card */
@@ -480,6 +516,8 @@ body {
   font-size: 12px;
   color: var(--met-muted);
   margin-bottom: 8px;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .defense-guide-title {

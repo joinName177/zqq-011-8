@@ -1,11 +1,21 @@
 import { SynopticChartData, MoodRecord } from '../core/models';
 import { TAG_METAS } from '../core/meteorology-engine';
+import {
+  countTextChars,
+  escapeHtml,
+  sliceText,
+  toSingleLine,
+  truncateText,
+  MAX_NOTE_CHARS
+} from '../core/text-encoding';
 
 export interface WeatherUIHandlers {
   onOpenLogModal: () => void;
   onResetData: () => void;
   onSubmitLog: (tag: string, intensity: number, note: string) => void;
   onSelectRecord: (record: MoodRecord) => void;
+  onExportJson: () => void;
+  onExportCsv: () => void;
 }
 
 export function renderWeatherApp(
@@ -24,8 +34,8 @@ export function renderWeatherApp(
   const cur = chartData.currentRecord;
   const meta = TAG_METAS[cur.tag] || TAG_METAS['阴转多云'];
 
-  const esc = (s: string) =>
-    s.replace(/[&<>'"]/g, t => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[t] || t));
+  // 统一转义入口：所有进入 HTML 文本/属性的动态值都必须经过 esc
+  const esc = escapeHtml;
 
   // Generate Isobar SVG paths dynamically based on records
   const isobarsSvg = `
@@ -119,6 +129,8 @@ export function renderWeatherApp(
           </div>
         </div>
         <div class="met-header-actions">
+          <button class="btn-reset" id="btnExportJson">⬇️ 导出 JSON</button>
+          <button class="btn-reset" id="btnExportCsv">⬇️ 导出 CSV</button>
           <button class="btn-reset" id="btnReset">🔄 重置示例气象序列</button>
           <button class="btn-record-mood" id="btnOpenLog">✍️ 记录今日心情天气</button>
         </div>
@@ -129,11 +141,11 @@ export function renderWeatherApp(
           ? `
         <div class="alert-banner">
           <div class="alert-banner-left">
-            <span class="alert-tag">${chartData.alerts[0].level}预警</span>
+            <span class="alert-tag">${esc(chartData.alerts[0].level)}预警</span>
             <strong>${esc(chartData.alerts[0].title)}</strong>
             <span style="font-size:13px;color:var(--met-text);">${esc(chartData.alerts[0].triggerCause)}</span>
           </div>
-          <span style="font-size:12px;color:var(--met-muted);">${chartData.alerts[0].issuedTime} 发布</span>
+          <span style="font-size:12px;color:var(--met-muted);">${esc(chartData.alerts[0].issuedTime)} 发布</span>
         </div>
       `
           : ''
@@ -145,7 +157,7 @@ export function renderWeatherApp(
           <div class="box-title">
             <h2>🌐 个人专属情绪综观天气图 (Synoptic Chart)</h2>
             <span style="font-size:12px;color:var(--met-muted);font-family:monospace;">
-              ${chartData.chartId} · ${chartData.generatedDate}
+              ${esc(chartData.chartId)} · ${esc(chartData.generatedDate)}
             </span>
           </div>
 
@@ -168,9 +180,15 @@ export function renderWeatherApp(
             </div>
             <div class="telemetry-card">
               <div class="lbl">思绪风场 (Wind Field)</div>
-              <div class="val" style="color:#fff;">${cur.windDirectionName}风</div>
+              <div class="val" style="color:#fff;">${esc(cur.windDirectionName)}风</div>
               <div class="lbl">${cur.windSpeedKmH} km/h</div>
             </div>
+          </div>
+
+          <!-- Current Observation Note -->
+          <div class="current-note-box">
+            <div class="note-box-title">📝 当前观测备注（${esc(cur.date)}）</div>
+            <div class="note-box-text">${esc(truncateText(cur.note, MAX_NOTE_CHARS))}</div>
           </div>
 
           <!-- SVG Weather Map -->
@@ -192,10 +210,10 @@ export function renderWeatherApp(
               ${chartData.records
                 .map(
                   r => `
-                <div class="record-pill ${r.id === cur.id ? 'active' : ''}" data-id="${r.id}">
-                  <div class="pill-date">${r.date.slice(5)}</div>
+                <div class="record-pill ${r.id === cur.id ? 'active' : ''}" data-id="${esc(r.id)}" title="${esc(toSingleLine(r.tag))} · ${esc(r.date)}">
+                  <div class="pill-date">${esc(r.date.slice(5))}</div>
                   <div class="pill-icon">${(TAG_METAS[r.tag] || TAG_METAS['阴转多云']).icon}</div>
-                  <div class="pill-tag">${esc(r.tag)}</div>
+                  <div class="pill-tag">${esc(toSingleLine(r.tag))}</div>
                   <div class="pill-pressure">${r.pressureHpa} hPa</div>
                 </div>
               `
@@ -240,7 +258,7 @@ export function renderWeatherApp(
               </div>
               <div class="monsoon-meta">
                 <div>流场源动力：${esc(chartData.monsoon.originSource)}</div>
-                <div>流动强度：${chartData.monsoon.flowSpeed}</div>
+                <div>流动强度：${esc(chartData.monsoon.flowSpeed)}</div>
               </div>
               <div class="monsoon-forecast-box">
                 <strong>未来三日气象推演：</strong>
@@ -258,10 +276,10 @@ export function renderWeatherApp(
                   ? chartData.alerts
                       .map(
                         a => `
-                    <div class="alert-item ${a.level}">
+                    <div class="alert-item ${esc(a.level)}">
                       <div class="alert-title-row">
                         <span class="alert-name">${esc(a.title)}</span>
-                        <span class="alert-level-badge" style="background:rgba(255,255,255,0.1);color:#fff;">${a.level}</span>
+                        <span class="alert-level-badge" style="background:rgba(255,255,255,0.1);color:#fff;">${esc(a.level)}</span>
                       </div>
                       <div class="alert-cause">${esc(a.triggerCause)}</div>
                       <div class="defense-guide-title">🛡️ 防灾避险自愈协议：</div>
@@ -296,9 +314,9 @@ export function renderWeatherApp(
               ${Object.values(TAG_METAS)
                 .map(
                   m => `
-                <button type="button" class="tag-btn ${m.tag === selectedTag ? 'active' : ''}" data-tag="${m.tag}">
+                <button type="button" class="tag-btn ${m.tag === selectedTag ? 'active' : ''}" data-tag="${esc(m.tag)}">
                   <span style="font-size:16px;">${m.icon}</span>
-                  <span>${m.tag}</span>
+                  <span>${esc(m.tag)}</span>
                 </button>
               `
                 )
@@ -313,6 +331,7 @@ export function renderWeatherApp(
             <div class="form-group">
               <label>观测记录与心绪注记：</label>
               <textarea class="form-textarea" id="noteInput" placeholder="写下引起今天气压变化的事情或思绪...">${esc(noteText)}</textarea>
+              <div class="note-counter" id="noteCounter">${countTextChars(noteText)} / ${MAX_NOTE_CHARS}</div>
             </div>
 
             <div class="modal-footer">
@@ -330,6 +349,8 @@ export function renderWeatherApp(
   // Attach event listeners
   container.querySelector('#btnOpenLog')?.addEventListener('click', handlers.onOpenLogModal);
   container.querySelector('#btnReset')?.addEventListener('click', handlers.onResetData);
+  container.querySelector('#btnExportJson')?.addEventListener('click', handlers.onExportJson);
+  container.querySelector('#btnExportCsv')?.addEventListener('click', handlers.onExportCsv);
 
   container.querySelectorAll('.record-pill').forEach(pill => {
     pill.addEventListener('click', () => {
@@ -357,6 +378,14 @@ export function renderWeatherApp(
     const noteBox = container.querySelector('#noteInput') as HTMLTextAreaElement;
     if (noteBox) {
       noteBox.addEventListener('input', () => {
+        // 码点级容量保护：emoji 记 1 字，超长即时裁剪并同步计数
+        if (countTextChars(noteBox.value) > MAX_NOTE_CHARS) {
+          noteBox.value = sliceText(noteBox.value, MAX_NOTE_CHARS);
+        }
+        const counter = container.querySelector('#noteCounter');
+        if (counter) {
+          counter.textContent = `${countTextChars(noteBox.value)} / ${MAX_NOTE_CHARS}`;
+        }
         onNoteChange(noteBox.value);
       });
     }

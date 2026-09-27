@@ -1,8 +1,21 @@
 import { MoodRecord } from '../core/models';
 import { MoodRepositoryPort } from '../ports/mood-repository.port';
-import { createRecordFromTag } from '../core/meteorology-engine';
+import { createRecordFromTag, sanitizeMoodRecord } from '../core/meteorology-engine';
 
 const STORAGE_KEY = 'mood_meteorology_records_v1';
+/** 存储容量保护：最多保留的记录条数，超出时丢弃最旧记录 */
+const MAX_STORED_RECORDS = 400;
+
+/** 写入统一走这里：JSON 序列化 + 配额异常兜底，避免脏数据撑爆 localStorage */
+function persist(records: MoodRecord[]): void {
+  const trimmed = records.slice(-MAX_STORED_RECORDS);
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
+  } catch {
+    // 配额不足时逐步裁剪旧记录重试
+    if (trimmed.length > 1) persist(trimmed.slice(Math.floor(trimmed.length / 2)));
+  }
+}
 
 export class LocalStorageMoodAdapter implements MoodRepositoryPort {
   getAll(): MoodRecord[] {
@@ -11,9 +24,15 @@ export class LocalStorageMoodAdapter implements MoodRepositoryPort {
       return this.resetToSample();
     }
     try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        // 逐条清洗：归一化编码、截断超长文本、丢弃结构非法记录
+        const cleaned = parsed
+          .map(sanitizeMoodRecord)
+          .filter((r): r is MoodRecord => r !== null);
+        if (cleaned.length > 0) {
+          return cleaned;
+        }
       }
     } catch {
       // ignore
@@ -26,12 +45,12 @@ export class LocalStorageMoodAdapter implements MoodRepositoryPort {
     // remove existing for same date if any
     const filtered = records.filter(r => r.date !== record.date);
     filtered.push(record);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+    persist(filtered);
   }
 
   delete(id: string): void {
     const records = this.getAll().filter(r => r.id !== id);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    persist(records);
   }
 
   resetToSample(): MoodRecord[] {
@@ -59,7 +78,7 @@ export class LocalStorageMoodAdapter implements MoodRepositoryPort {
       return createRecordFromTag(item.tag, item.intensity, item.note, dateStr);
     });
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    persist(records);
     return records;
   }
 }

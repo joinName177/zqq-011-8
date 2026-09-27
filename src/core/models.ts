@@ -1,5 +1,17 @@
 export type AlertLevel = '蓝色' | '黄色' | '橙色' | '红色';
 
+/**
+ * 文本容量约束（按 Unicode 码点计，emoji 记 1）。
+ * 录入、持久化、界面渲染与文件导出全链路统一遵守，
+ * 防止超长文本撑破布局或产生无效导出结构。
+ */
+export const TEXT_LIMITS = {
+  note: 200,
+  tag: 24,
+  id: 64,
+  label: 16
+} as const;
+
 export interface MoodTagMeta {
   tag: string;
   category: 'sunny' | 'cloudy' | 'rain' | 'storm' | 'snow' | 'fog';
