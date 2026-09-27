@@ -224,6 +224,48 @@ body {
   color: var(--met-muted);
 }
 
+/* Current Observation Note Card */
+.note-card {
+  background: var(--met-card);
+  border: 1px solid var(--met-border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 20px;
+}
+
+.note-card-label {
+  font-size: 11px;
+  color: var(--met-muted);
+  margin-bottom: 6px;
+}
+
+.note-card-body {
+  font-size: 13px;
+  color: var(--met-text);
+  line-height: 1.6;
+  white-space: pre-wrap;       /* 保留多行换行 */
+  overflow-wrap: anywhere;     /* 超长无空格文本不断版 */
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;       /* 超长备注折叠，保护布局 */
+  overflow: hidden;
+}
+
+/* Note Input Counter */
+.note-counter {
+  font-size: 11px;
+  color: var(--met-muted);
+  text-align: right;
+  margin-top: 4px;
+  font-family: monospace;
+}
+
+.note-counter.limit-hit {
+  color: var(--met-gold);
+  font-weight: 700;
+}
+
 /* Weather Map Canvas SVG */
 .synoptic-map-wrap {
   position: relative;

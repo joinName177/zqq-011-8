@@ -1,8 +1,10 @@
 import './ui/styles.css';
 import { LocalStorageMoodAdapter } from './adapters/local-storage-mood.adapter';
 import { MeteorologyEngineAdapter } from './adapters/meteorology-engine.adapter';
+import { downloadWeatherExport } from './adapters/weather-export.adapter';
 import { createRecordFromTag } from './core/meteorology-engine';
 import { MoodRecord, SynopticChartData } from './core/models';
+import { buildWeatherExport, type WeatherExportFormat } from './core/weather-export';
 import { renderWeatherApp } from './ui/app';
 import { summarizeMood, chartSummary } from './core/mood-summary';
 import { moodTelemetry } from './adapters/mood-telemetry';
@@ -67,6 +69,10 @@ function refreshView() {
         chartData = metEngine.generateSynopticChart(filtered.length > 0 ? filtered : records);
         chartData.currentRecord = record;
         refreshView();
+      },
+      onExport: (format: WeatherExportFormat) => {
+        // 与当前界面预览使用同一份 chartData 快照，保证导出内容一致
+        downloadWeatherExport(buildWeatherExport(chartData, format));
       }
     },
     () => {

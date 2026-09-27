@@ -1,8 +1,42 @@
 import { MoodRecord } from '../core/models';
 import { MoodRepositoryPort } from '../ports/mood-repository.port';
-import { createRecordFromTag } from '../core/meteorology-engine';
+import { createRecordFromTag, TAG_METAS } from '../core/meteorology-engine';
+import { normalizeText, sanitizeNoteText, sanitizeTagText } from '../core/text-encoding';
 
 const STORAGE_KEY = 'mood_meteorology_records_v1';
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  const num = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.min(max, Math.max(min, num));
+}
+
+/**
+ * 持久化边界统一清洗：修复乱码（规范化/孤立代理项）、截断超长文本、
+ * 剔除结构非法的记录，保证旧版本或损坏数据不会把乱码带进界面与导出。
+ */
+export function sanitizeRecord(raw: unknown, index = 0): MoodRecord | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const candidate = raw as Partial<MoodRecord>;
+  const date = normalizeText(candidate.date).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const tag = sanitizeTagText(candidate.tag);
+  if (!tag) return null;
+  const meta = TAG_METAS[tag] || TAG_METAS['阴转多云'];
+  return {
+    id: normalizeText(candidate.id) || `rec-${date}-restored-${index}`,
+    date,
+    tag,
+    intensity: Math.round(clampNumber(candidate.intensity, 1, 10, 5)),
+    note: sanitizeNoteText(candidate.note) || '平静观测记录',
+    pressureHpa: Math.round(clampNumber(candidate.pressureHpa, 960, 1045, meta.defaultPressure)),
+    temperatureC: Math.round(clampNumber(candidate.temperatureC, -40, 45, meta.defaultTemp)),
+    humidityPercent: Math.round(clampNumber(candidate.humidityPercent, 0, 100, meta.defaultHumidity)),
+    windSpeedKmH: Math.round(clampNumber(candidate.windSpeedKmH, 0, 200, 10)),
+    windDirectionDeg: Math.round(clampNumber(candidate.windDirectionDeg, 0, 360, 0)),
+    windDirectionName: sanitizeTagText(candidate.windDirectionName) || '北'
+  };
+}
 
 export class LocalStorageMoodAdapter implements MoodRepositoryPort {
   getAll(): MoodRecord[] {
@@ -11,21 +45,28 @@ export class LocalStorageMoodAdapter implements MoodRepositoryPort {
       return this.resetToSample();
     }
     try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const cleaned = parsed
+          .map((item, index) => sanitizeRecord(item, index))
+          .filter((record): record is MoodRecord => record !== null);
+        if (cleaned.length > 0) {
+          return cleaned;
+        }
       }
     } catch {
-      // ignore
+      // 数据损坏时回退示例序列
     }
     return this.resetToSample();
   }
 
   add(record: MoodRecord): void {
+    const safe = sanitizeRecord(record);
+    if (!safe) return;
     const records = this.getAll();
     // remove existing for same date if any
-    const filtered = records.filter(r => r.date !== record.date);
-    filtered.push(record);
+    const filtered = records.filter(r => r.date !== safe.date);
+    filtered.push(safe);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
   }
 

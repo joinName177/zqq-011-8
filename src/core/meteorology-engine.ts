@@ -6,6 +6,7 @@ import {
   ExtremeWeatherAlert,
   SynopticChartData
 } from './models';
+import { sanitizeNoteText, sanitizeTagText } from './text-encoding';
 
 export const TAG_METAS: Record<string, MoodTagMeta> = {
   '晴空万里': {
@@ -91,7 +92,9 @@ export const TAG_METAS: Record<string, MoodTagMeta> = {
 };
 
 export function createRecordFromTag(tag: string, intensity: number, note: string, dateStr?: string): MoodRecord {
-  const meta = TAG_METAS[tag] || TAG_METAS['阴转多云'];
+  // 统一编码入口：标签与备注先规范化、截断，再进入领域计算
+  const cleanTag = sanitizeTagText(tag);
+  const meta = TAG_METAS[cleanTag] || TAG_METAS['阴转多云'];
   const pressureOffset = (5 - intensity) * 3;
   const pressureHpa = Math.max(960, Math.min(1045, meta.defaultPressure + pressureOffset));
   const tempOffset = (intensity - 5) * 1.2;
@@ -99,7 +102,7 @@ export function createRecordFromTag(tag: string, intensity: number, note: string
   const humidityPercent = Math.min(100, Math.max(20, meta.defaultHumidity + (intensity > 6 ? 10 : -5)));
 
   const windDirections = ['东北', '东', '东南', '南', '西南', '西', '西北', '北'];
-  const dirIdx = Math.abs((tag.charCodeAt(0) + intensity) % 8);
+  const dirIdx = Math.abs((meta.tag.charCodeAt(0) + intensity) % 8);
   const windDirName = windDirections[dirIdx];
   const windDeg = dirIdx * 45;
   const windSpeed = 5 + intensity * 3.5;
@@ -107,9 +110,9 @@ export function createRecordFromTag(tag: string, intensity: number, note: string
   return {
     id: `rec-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     date: dateStr || new Date().toISOString().split('T')[0],
-    tag,
+    tag: cleanTag || meta.tag,
     intensity,
-    note: note.trim() || '平静观测记录',
+    note: sanitizeNoteText(note) || '平静观测记录',
     pressureHpa,
     temperatureC,
     humidityPercent,
